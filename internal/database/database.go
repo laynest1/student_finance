@@ -16,7 +16,7 @@ func Init() {
 	
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatal("Не удалось загрузить .env файл:", err)
+		log.Fatal("не удалось загрузить .env файл:", err)
 	}
 	connStr := os.Getenv("DATABASE_URL")
 
