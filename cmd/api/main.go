@@ -3,9 +3,15 @@ package main
 import (
 	"net/http"
 	"github.com/laynest1/student_finance/internal/handlers"
+	"github.com/laynest1/student_finance/internal/database"
+	
+
 )
 
 func main() {
+
+	database.Init()
+	database.Migrate()
 	http.HandleFunc("/api/transactions", func(w http.ResponseWriter, r *http.Request){
 		switch r.Method {
 			case http.MethodGet :
