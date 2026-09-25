@@ -34,5 +34,5 @@ func Migrate() {
 	if err != nil {
 		log.Fatal("Ошибка миграции transactions:", err)
 	}
-	log.Println("✅ Таблица transactions готова!")
+	log.Println("таблица transactions создана")
 }
