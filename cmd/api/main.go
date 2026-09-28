@@ -12,6 +12,10 @@ func main() {
 
 	database.Init()
 	database.Migrate()
+
+	http.HandleFunc("/api/register", handlers.Register)
+	http.HandleFunc("/api/login", handlers.Login)
+	http.HandleFunc("/api/users", handlers.AllUsers)
 	http.HandleFunc("/api/transactions", func(w http.ResponseWriter, r *http.Request){
 		switch r.Method {
 			case http.MethodGet :
