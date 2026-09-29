@@ -13,35 +13,55 @@ import (
 
 
 func GetTransaction(w http.ResponseWriter, r *http.Request) {
-    w.Header().Set("Content-Type", "application/json")
+    authHeader := r.Header.Get("Authorization")
+    if authHeader == "" {
+        http.Error(w, "требуется авторизация", http.StatusUnauthorized)
+        return
+    }
+    token := strings.TrimPrefix(authHeader, "Bearer ")
+    if token == authHeader {
+        http.Error(w, "неверный формат токена", http.StatusUnauthorized)
+        return
+    }
 
-    rows, err := database.DB.Query(r.Context(),
-        "SELECT id, amount, category, date, description FROM transactions")
+    userID, err := auth.ValidateToken(token)
     if err != nil {
-        log.Printf("GetTransactions query error: %v", err)
+        http.Error(w, "недействительный токен", http.StatusUnauthorized)
+        return
+    }
+
+    query := `SELECT id, user_id, amount, category, date, description 
+	          FROM transactions 
+	          WHERE user_id = $1
+	          ORDER BY id DESC`
+
+    rows, err := database.DB.Query(r.Context(), query, userID)
+    if err != nil {
+        log.Printf("GetTransaction query error: %v", err)
         http.Error(w, "internal server error", http.StatusInternalServerError)
         return
     }
     defer rows.Close()
 
     transactions := []models.Transaction{}
-    for rows.Next() {
+
+    for rows.Next(){
         var t models.Transaction
-        if err := rows.Scan(&t.ID, &t.Amount, &t.Category, &t.Date, &t.Description); err != nil {
-            log.Printf("GetTransactions scan error: %v", err)
+        err := rows.Scan(&t.ID, &t.UserID, &t.Amount, &t.Category, &t.Date, &t.Description)
+        if err != nil {
+            log.Printf("get transaction scan error: %v", err)
             http.Error(w, "internal server error", http.StatusInternalServerError)
             return
+
         }
         transactions = append(transactions, t)
+    
     }
-
-    if err := rows.Err(); err != nil {
-        log.Printf("GetTransactions rows error: %v", err)
-        http.Error(w, "internal server error", http.StatusInternalServerError)
-        return
-    }
+    w.Header().Set("Content-Type", "application/json")
 
     json.NewEncoder(w).Encode(transactions)
+
+
 }
 
 
