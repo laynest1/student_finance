@@ -16,18 +16,23 @@ func main() {
 	http.HandleFunc("/api/register", handlers.Register)
 	http.HandleFunc("/api/login", handlers.Login)
 	http.HandleFunc("/api/users", handlers.AllUsers)
-	http.HandleFunc("/api/transactions", func(w http.ResponseWriter, r *http.Request){
+	http.HandleFunc("/api/transactions", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
-			case http.MethodGet :
-				handlers.GetTransaction(w,r)
-			case http.MethodPost :
-				handlers.CreateTransaction(w,r)
-			default:
-				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		case http.MethodGet:
+			handlers.GetTransaction(w, r)
+		case http.MethodPost:
+			handlers.CreateTransaction(w, r)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
 
-
-	}
-
+	http.HandleFunc("/api/transactions/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			handlers.DeleteTransaction(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
 	})
 	http.ListenAndServe(":7777", nil)
 }

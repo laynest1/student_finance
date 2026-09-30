@@ -5,6 +5,7 @@ import (
     "log"
     "net/http"
     "strings"
+    "strconv"
     "github.com/laynest1/student_finance/internal/auth"
 
     "github.com/laynest1/student_finance/internal/database"
@@ -58,10 +59,8 @@ func GetTransaction(w http.ResponseWriter, r *http.Request) {
     
     }
     w.Header().Set("Content-Type", "application/json")
-
+    w.WriteHeader(http.StatusOK)
     json.NewEncoder(w).Encode(transactions)
-
-
 }
 
 
@@ -121,6 +120,66 @@ func CreateTransaction(w http.ResponseWriter, r *http.Request) {
 
     newTransaction.UserID = userID
     json.NewEncoder(w).Encode(newTransaction)
+
+}
+
+
+
+func DeleteTransaction(w http.ResponseWriter, r *http.Request) {
+    authHeader := r.Header.Get("Authorization")
+    if authHeader == "" {
+        http.Error(w, "требуется авторизация", http.StatusUnauthorized)
+        return
+    }
+
+    token := strings.TrimPrefix(authHeader, "Bearer ")
+    if token == authHeader {
+        http.Error(w, "неверный формат токена", http.StatusUnauthorized)
+        return
+    }
+
+    userID, err := auth.ValidateToken(token)
+    if err != nil {
+        http.Error(w, "недействительный токен", http.StatusUnauthorized)
+        return
+    }
+
+    urlPath := strings.TrimPrefix(r.URL.Path, "/api/transactions/")
+    if urlPath == "" || urlPath == r.URL.Path {
+        http.Error(w, "не указан айди", http.StatusBadRequest)
+        return
+    }
+
+    tranactionID, err := strconv.Atoi(urlPath)
+    if err != nil {
+        http.Error(w, "не верный id", http.StatusBadRequest)
+        return
+    }
+
+    query := `DELETE FROM transactions WHERE user_id = $1 AND id = $2`
+
+
+
+    result, err := database.DB.Exec(r.Context(), query, userID, tranactionID)
+    if err != nil {
+        log.Printf("delete transaction error: %v", err)
+        http.Error(w,"internal server error", http.StatusInternalServerError)
+        return
+    }
+
+    delCnt := result.RowsAffected()
+    
+    if delCnt == 0 {
+        http.Error(w,"транзакция не найдена или не принадлежит вам", http.StatusNotFound)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    json.NewEncoder(w).Encode(map[string]string{
+        "message" : "транзакция удалена",
+    })
+
 
 }
 
