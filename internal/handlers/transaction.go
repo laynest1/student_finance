@@ -183,3 +183,70 @@ func DeleteTransaction(w http.ResponseWriter, r *http.Request) {
 
 }
 
+
+func GetStats(w http.ResponseWriter, r *http.Request) {
+    authHeader := r.Header.Get("Authorization")
+    if authHeader == "" {
+        http.Error(w, "требуется авторизация", http.StatusUnauthorized)
+        return
+    }
+    token := strings.TrimPrefix(authHeader, "Bearer ")
+    if token == authHeader {
+        http.Error(w, "неверный формат токена", http.StatusUnauthorized)
+        return
+    }
+
+    userID, err:= auth.ValidateToken(token)
+    if err != nil {
+        http.Error(w, "неверный токен", http.StatusUnauthorized)
+        return
+    }
+    queryTotal := `SELECT COALESCE(SUM(amount), 0), COUNT(*) from transactions where user_id = $1`
+
+
+    var sum float64
+    var cnt int
+    err = database.DB.QueryRow(r.Context(), queryTotal, userID).Scan(&sum, &cnt)
+    if err != nil {
+		log.Printf("GetStats total error: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+    queryGroup := `SELECT category, sum(amount) FROM transactions where user_id = $1 GROUP BY category`
+
+    rows, err := database.DB.Query(r.Context(), queryGroup, userID)
+
+    if err != nil {
+        log.Printf("Stats category error: %v", err)
+        http.Error(w, "internal server error", http.StatusInternalServerError)
+        return
+    }
+
+    defer rows.Close()
+
+    byCategory := make(map[string]float64)
+    for rows.Next() {
+        var category string
+        var sum float64
+        err := rows.Scan(&category, &sum)
+        if err != nil {
+            log.Printf("stats scan category error: %v", err)
+            http.Error(w, "internal server error", http.StatusInternalServerError)
+            return
+        }
+        byCategory[category] = sum
+    }
+    stats := map[string]interface{}{
+        "total_amount": sum,
+        "transaction_count": cnt,
+        "by_category": byCategory,
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(stats)
+
+
+
+}
+
