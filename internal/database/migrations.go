@@ -35,4 +35,18 @@ func Migrate() {
 		log.Fatal("Ошибка миграции transactions:", err)
 	}
 	log.Println("таблица transactions создана")
+
+	_, err = DB.Exec(context.Background(), `
+        CREATE TABLE IF NOT EXISTS categories (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            name VARCHAR(100) NOT NULL,
+            percentage INTEGER NOT NULL CHECK (percentage > 0 AND percentage <= 100),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    `)
+    if err != nil {
+        log.Fatalf("Ошибка создания таблицы categories: %v", err)
+    }
+    log.Println("таблица categories создана")
 }
