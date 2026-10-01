@@ -6,6 +6,7 @@ import (
     "net/http"
     "strings"
     "strconv"
+    "time"
     "github.com/laynest1/student_finance/internal/auth"
 
     "github.com/laynest1/student_finance/internal/database"
@@ -94,18 +95,17 @@ func CreateTransaction(w http.ResponseWriter, r *http.Request) {
         http.Error(w, "amount must be > 0", http.StatusBadRequest)
         return
     }
+    if newTransaction.Date == "" {
+        newTransaction.Date = time.Now().Format("02-01-2006")
+    }
 
     if newTransaction.Category == "" {
 		http.Error(w, "category is required", http.StatusBadRequest)
 		return
 	}
-	if newTransaction.Date == "" {
-		http.Error(w, "date is required", http.StatusBadRequest)
-		return
-	}
+	
     query := `INSERT INTO transactions (user_id, amount, category, date, description)
-	          VALUES ($1, $2, $3, $4, $5) RETURNING id`
-
+           VALUES ($1, $2, $3, $4, $5) RETURNING id`
 
     err = database.DB.QueryRow(r.Context(), query, userID, newTransaction.Amount,
     newTransaction.Category, newTransaction.Date, newTransaction.Description).Scan(&newTransaction.ID)
