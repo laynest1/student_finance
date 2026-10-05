@@ -4,6 +4,7 @@ import (
     "encoding/json"
     "log"
     "net/http"
+    "fmt"
     "strings"
     "strconv"
     "time"
@@ -250,3 +251,119 @@ func GetStats(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func GetRecommendations(w http.ResponseWriter, r *http.Request) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		http.Error(w, "требуется авторизация", http.StatusUnauthorized)
+		return
+	}
+
+	token := strings.TrimPrefix(authHeader, "Bearer ")
+	if token == authHeader {
+		http.Error(w, "неверный формат токена", http.StatusUnauthorized)
+		return
+	}
+
+	userID, err := auth.ValidateToken(token)
+	if err != nil {
+		http.Error(w, "недействительный токен", http.StatusUnauthorized)
+		return
+	}
+
+	queryTotal := `SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE user_id = $1`
+	var totalAmount float64
+	err = database.DB.QueryRow(r.Context(), queryTotal, userID).Scan(&totalAmount)
+	if err != nil {
+		log.Printf("GetRecommendations total error: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+
+	queryCategories := `SELECT id, name, percentage FROM categories WHERE user_id = $1 ORDER BY name`
+	rows, err := database.DB.Query(r.Context(), queryCategories, userID)
+	if err != nil {
+		log.Printf("GetRecommendations categories error: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	type CategoryLimit struct {
+		ID         int
+		Name       string
+		Percentage int
+	}
+	var categories []CategoryLimit
+
+	for rows.Next() {
+		var c CategoryLimit
+		if err := rows.Scan(&c.ID, &c.Name, &c.Percentage); err != nil {
+			log.Printf("GetRecommendations scan categories error: %v", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		categories = append(categories, c)
+	}
+
+
+	recommendations := []map[string]interface{}{}
+
+	if len(categories) == 0 {
+		recommendations = append(recommendations, map[string]interface{}{
+			"type":    "info",
+			"message": "У вас нет категорий. Создайте категории с лимитами, чтобы контролировать бюджет!",
+		})
+	} else {
+		for _, cat := range categories {
+			querySpent := `SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE user_id = $1 AND category = $2`
+			var spent float64
+			err := database.DB.QueryRow(r.Context(), querySpent, userID, cat.Name).Scan(&spent)
+			if err != nil {
+				log.Printf("GetRecommendations spent error: %v", err)
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+				return
+			}
+
+			var limitAmount float64
+			if totalAmount > 0 {
+				limitAmount = totalAmount * float64(cat.Percentage) / 100
+			}
+
+
+			var actualPercentage float64
+			if totalAmount > 0 {
+				actualPercentage = (spent / totalAmount) * 100
+			}
+			if spent == 0 {
+				recommendations = append(recommendations, map[string]interface{}{
+					"type":    "info",
+					"message": fmt.Sprintf("Категория '%s': лимит %d%% (%.0f руб.). Вы пока ничего не потратили.", cat.Name, cat.Percentage, limitAmount),
+				})
+			} else if actualPercentage > float64(cat.Percentage) {
+				overAmount := spent - limitAmount
+				recommendations = append(recommendations, map[string]interface{}{
+					"type":    "warning",
+					"message": fmt.Sprintf("Категория '%s': вы потратили %.0f руб. (лимит %.0f руб.). Превышение на %.0f руб.! Попробуйте сократить расходы.", cat.Name, spent, limitAmount, overAmount),
+				})
+			} else if actualPercentage < float64(cat.Percentage) {
+				savedAmount := limitAmount - spent
+				recommendations = append(recommendations, map[string]interface{}{
+					"type":    "success",
+					"message": fmt.Sprintf("Категория '%s': вы потратили %.0f руб. (лимит %.0f руб.). Отлично! Вы сэкономили %.0f руб.", cat.Name, spent, limitAmount, savedAmount),
+				})
+			} else {
+				recommendations = append(recommendations, map[string]interface{}{
+					"type":    "info",
+					"message": fmt.Sprintf("Категория '%s': вы потратили ровно %.0f руб. (лимит %.0f руб.). Идеальный баланс!", cat.Name, spent, limitAmount),
+				})
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"total_amount":    totalAmount,
+		"recommendations": recommendations,
+	})
+}

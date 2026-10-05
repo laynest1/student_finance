@@ -17,6 +17,7 @@ func main() {
 	http.HandleFunc("/api/login", handlers.Login)
 	http.HandleFunc("/api/users", handlers.AllUsers)
 	http.HandleFunc("/api/stats", handlers.GetStats)
+	http.HandleFunc("/api/recommendation", handlers.GetRecommendations)
 	http.HandleFunc("/api/transactions", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -54,7 +55,7 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
-	
+
 	http.ListenAndServe(":7777", nil)
 }
 
